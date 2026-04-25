@@ -1,22 +1,22 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Digital Portrait</title>
+  <title>Body Particle System</title>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
 
-<h1>Digital Consumption Portrait</h1>
-
-<button id="historyBtn">Connect History</button>
-<button id="cameraBtn">Start Camera</button>
-
 <video id="video" autoplay playsinline></video>
-<canvas id="canvas"></canvas>
+<canvas id="three-canvas"></canvas>
 
-<script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
-<script src="script.js" defer></script>
+<!-- MediaPipe -->
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils"></script>
+
+<!-- Three.js -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
+<script type="module" src="main.js"></script>
 
 </body>
 </html>
