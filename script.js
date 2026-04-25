@@ -1,10 +1,20 @@
+console.log("SCRIPT LOADED");
+
 let words = [];
 
-function getHistory() {
+document.getElementById("historyBtn").onclick = () => {
+  console.log("CLICK HISTORY");
   window.postMessage({ type: "GET_HISTORY" }, "*");
-}
+};
+
+document.getElementById("cameraBtn").onclick = () => {
+  console.log("CLICK CAMERA");
+  startCamera();
+};
 
 window.addEventListener("message", (event) => {
+  console.log("RECEIVED:", event.data);
+
   if (event.data.type === "HISTORY_DATA") {
     const data = event.data.data;
 
@@ -25,6 +35,8 @@ window.addEventListener("message", (event) => {
         word,
         size: Math.min(40, 10 + count)
       }));
+
+    console.log("WORDS READY:", words.length);
   }
 });
 
@@ -33,8 +45,15 @@ const canvas = document.getElementById("canvas");
 const ctx = canvas.getContext("2d");
 
 async function startCamera() {
-  const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-  video.srcObject = stream;
+  console.log("START CAMERA");
+
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+    video.srcObject = stream;
+  } catch (e) {
+    console.error("CAMERA ERROR:", e);
+    return;
+  }
 
   const faceMesh = new FaceMesh({
     locateFile: (file) =>
@@ -69,7 +88,6 @@ function draw(results) {
 
   const landmarks = results.multiFaceLandmarks[0];
 
-  // Face bounding box
   let minX = 1, minY = 1, maxX = 0, maxY = 0;
 
   landmarks.forEach(p => {
@@ -84,7 +102,6 @@ function draw(results) {
   const w = (maxX - minX) * canvas.width;
   const h = (maxY - minY) * canvas.height;
 
-  // Draw words inside face box
   words.forEach(wd => {
     ctx.font = `${wd.size}px Arial`;
     ctx.fillStyle = "white";
