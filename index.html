@@ -8,15 +8,15 @@
 
 <h1>Digital Consumption Portrait</h1>
 
-<button onclick="getHistory()">Connect History</button>
-<button onclick="startCamera()">Start Camera</button>
+<button id="historyBtn">Connect History</button>
+<button id="cameraBtn">Start Camera</button>
 
 <video id="video" autoplay playsinline></video>
 <canvas id="canvas"></canvas>
 
 <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
-<script src="script.js"></script>
+<script src="script.js" defer></script>
 
 </body>
 </html>
