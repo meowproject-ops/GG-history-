@@ -2,13 +2,21 @@
 <html>
 <head>
   <title>Digital Portrait</title>
+  <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <h1>Visualize Your Digital Consumption</h1>
-  <button onclick="getHistory()">Connect History</button>
 
-  <pre id="output"></pre>
+<h1>Digital Consumption Portrait</h1>
 
-  <script src="script.js"></script>
+<button onclick="getHistory()">Connect History</button>
+<button onclick="startCamera()">Start Camera</button>
+
+<video id="video" autoplay playsinline></video>
+<canvas id="canvas"></canvas>
+
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+<script src="script.js"></script>
+
 </body>
 </html>
