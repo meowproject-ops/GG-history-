@@ -1,5 +1,19 @@
 body {
-  font-family: Arial;
   text-align: center;
-  padding: 40px;
+  font-family: Arial;
+  background: black;
+  color: white;
+}
+
+video {
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform: scaleX(-1);
+}
+
+canvas {
+  position: absolute;
+  left: 0;
+  top: 0;
 }
