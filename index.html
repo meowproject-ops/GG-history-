@@ -5,66 +5,39 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Hand Tracking Fruit Ninja</title>
     <link rel="stylesheet" href="styles.css">
-
-        <!-- Primary Meta Tags -->
-        <meta name="title" content="Fruit Ninja: slice fruits with your hands!">
-        <meta name="description" content="Free web game; no sign-up or downloads">
-
-        <!-- Open Graph / Facebook -->
-        <meta property="og:type" content="website">
-        <meta property="og:url" content="https://collidingscopes.github.io/fruit-ninja/">
-        <meta property="og:title" content="Fruit Ninja: slice fruits with your hands!">
-        <meta property="og:description" content="Free web game; no sign-up or downloads">
-        <meta property="og:image" content="https://raw.githubusercontent.com/collidingScopes/siteOG/main/fruitNinja.png">
-
-        <!-- Twitter -->
-        <meta property="twitter:card" content="summary_large_image">
-        <meta property="twitter:url" content="https://collidingscopes.github.io/fruit-ninja/">
-        <meta property="twitter:title" content="Fruit Ninja: slice fruits with your hands!">
-        <meta property="twitter:description" content="Free web game; no sign-up or downloads">
-        <meta property="twitter:image" content="https://raw.githubusercontent.com/collidingScopes/siteOG/main/fruitNinja.png">
-
-        <!-- <link rel="icon" href="assets/favicon.png">
-        <link rel="apple-touch-icon" href="assets/apple-touch-icon.png"> -->
-        <script defer src="https://cloud.umami.is/script.js" data-website-id="eb59c81c-27cb-4e1d-9e8c-bfbe70c48cd9"></script>
 </head>
 <body>
     <div id="game-container">
-        <p id="feedback-para">Feedback: <a href="https://x.com/measure_plan" target="_blank">X</a> / <a href="https://instagram.com/stereo.drift" target="_blank">IG</a></p>
         <div id="background"></div>
         <canvas id="game-canvas"></canvas>
-        <video id="video" playsinline></video>
+        <video id="video" playsinline style="display: none;"></video>
         <canvas id="hand-canvas"></canvas>
+        
         <div id="info-container">
-            <div id="score-container">Score: <span id="score">0</span></div>
-            <div id="lives-container">Lives: <span id="lives">3</span></div>    
+            <div>Score: <span id="score">0</span></div>
+            <div>Lives: <span id="lives">3</span></div>    
         </div>
 
         <div id="start-screen">
-            <h1>✋Fruit Ninja🥷</h1>
+            <h1>✋ Fruit Ninja 🥷</h1>
             <p>Slice fruits with your hands!</p>
-            <p>Enable webcam and move your hand in front of the camera</p>
-            <p>Miss a fruit; lose a life</p>
-            <button id="start-button">Start</button>
-        </div>
-
-        <div id="game-over">
-            <h1>Game Over</h1>
-            <p>Your final score: <span id="final-score">0</span></p>
-            <button id="restart-button">Play Again</button>
-            <p>To say hi or send feedback to me: <a href="https://x.com/measure_plan" target="_blank">Twitter</a> / <a href="https://instagram.com/stereo.drift" target="_blank">Instagram</a></p>
+            <button id="start-button">Start Game</button>
         </div>
 
         <div id="loading">
             <h2>Loading...</h2>
-            <p>Initializing hand tracking and game assets</p>
+            <p>Fetching AI Models...</p>
+        </div>
+
+        <div id="game-over" style="display:none;">
+            <h1>Game Over</h1>
+            <button id="restart-button">Play Again</button>
         </div>
     </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
+    <script src="game.js"></script>
 </body>
-
-<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
-
-<script src="game.js"></script>
 </html>
