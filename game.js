@@ -1,283 +1,190 @@
-// Game state
+// Game State & Configuration
 const gameState = {
     score: 0,
     lives: 5,
     isGameActive: false,
     fruits: [],
     particles: [],
-    lastFrameTime: 0,
-    spawnInterval: 1500,
+    fruitPool: [], // Object pooling for performance
     lastSpawnTime: 0,
-    handLandmarks: null,
-    fingerTip: { x: 0, y: 0, z: 0 },
-    prevFingerTip: { x: 0, y: 0, z: 0 },
-    bladeTrails: [],
-    defaultSpawnInterval: 1500,
-    defaultLives: 5,
-    desktopSpawnRange: 24,
-    mobileSpawnRange: 14,
-    frameCount: 0,
+    spawnInterval: 1500,
+    prevFingerTip: new THREE.Vector2(),
+    fingerTip: new THREE.Vector2(),
+    isHandVisible: false
 };
 
-// DOM elements
+// DOM Elements
 const videoElement = document.getElementById('video');
 const gameCanvas = document.getElementById('game-canvas');
-const handCanvas = document.getElementById('hand-canvas');
-const handCtx = handCanvas.getContext('2d');
 const scoreElement = document.getElementById('score');
 const livesElement = document.getElementById('lives');
 const startScreen = document.getElementById('start-screen');
-const startButton = document.getElementById('start-button');
 const gameOverScreen = document.getElementById('game-over');
-const restartButton = document.getElementById('restart-button');
 const finalScoreElement = document.getElementById('final-score');
 const loadingScreen = document.getElementById('loading');
 
-// Three.js setup
+// Three.js Core Setup
 const scene = new THREE.Scene();
-const camera = new THREE.PerspectiveCamera(75, (window.innerWidth * 0.5) / window.innerHeight, 0.1, 1000);
+const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
 const renderer = new THREE.WebGLRenderer({ canvas: gameCanvas, alpha: true, antialias: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 
-function isMobileDevice() {
-    return /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
-}
+// Raycaster for advanced precision slicing
+const raycaster = new THREE.Raycaster();
 
-// Adjust renderer for performance
-const pixelRatio = isMobileDevice() ? Math.min(window.devicePixelRatio, 1) : Math.min(window.devicePixelRatio, 2);
-renderer.setPixelRatio(pixelRatio);
-renderer.setSize(window.innerWidth * 0.5, window.innerHeight);
-
-// Lighting
+// Lights
 scene.add(new THREE.AmbientLight(0xffffff, 0.7));
-const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
-dirLight.position.set(5, 10, 7);
-scene.add(dirLight);
+const light = new THREE.DirectionalLight(0xffffff, 1);
+light.position.set(5, 10, 7);
+scene.add(light);
 
-camera.position.z = 20;
+camera.position.z = 15;
 
-// Fruit Geometries & Materials
+// Assets
 const fruitGeometries = [
-    new THREE.SphereGeometry(1.8, 16, 16),
-    new THREE.SphereGeometry(1.6, 16, 16),
-    new THREE.SphereGeometry(2.0, 16, 16),
-    new THREE.TorusGeometry(1.2, 0.5, 12, 24),
-    new THREE.ConeGeometry(1.2, 2.2, 16)
+    new THREE.SphereGeometry(1, 16, 16),
+    new THREE.IcosahedronGeometry(1, 1),
+    new THREE.TorusGeometry(0.7, 0.3, 12, 24)
 ];
-
 const fruitMaterials = [
     new THREE.MeshLambertMaterial({ color: 0xff0000 }), // Red
-    new THREE.MeshLambertMaterial({ color: 0xff7f00 }), // Orange
-    new THREE.MeshLambertMaterial({ color: 0x00cc00 }), // Green
-    new THREE.MeshLambertMaterial({ color: 0x9900ff }), // Purple
-    new THREE.MeshLambertMaterial({ color: 0xff6699 })  // Pink
+    new THREE.MeshLambertMaterial({ color: 0x00ff00 }), // Green
+    new THREE.MeshLambertMaterial({ color: 0xffa500 }), // Orange
+    new THREE.MeshLambertMaterial({ color: 0xffff00 })  // Yellow
 ];
 
-// MediaPipe Setup
-let hands;
-async function setupHandTracking() {
-    // Set Canvas dimensions to match CSS/Video
-    handCanvas.width = window.innerWidth * 0.5;
-    handCanvas.height = window.innerHeight;
+// Initialize MediaPipe Hands
+const hands = new Hands({
+    locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+});
 
-    hands = new Hands({
-        locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
-    });
+hands.setOptions({
+    maxNumHands: 1,
+    modelComplexity: 1,
+    minDetectionConfidence: 0.7,
+    minTrackingConfidence: 0.7
+});
 
-    hands.setOptions({
-        maxNumHands: 1,
-        modelComplexity: 0,
-        minDetectionConfidence: 0.5,
-        minTrackingConfidence: 0.5,
-    });
-
-    hands.onResults(onHandResults);
-
-    const cameraUtils = new Camera(videoElement, {
-        onFrame: async () => { await hands.send({image: videoElement}); },
-        width: isMobileDevice() ? 320 : 640,
-        height: isMobileDevice() ? 180 : 360,
-    });
-    
-    await cameraUtils.start();
-    loadingScreen.style.display = 'none';
-}
-
-function onHandResults(results) {
-    handCtx.clearRect(0, 0, handCanvas.width, handCanvas.height);
+hands.onResults(results => {
+    if (loadingScreen.style.display !== 'none') loadingScreen.style.display = 'none';
 
     if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
-        gameState.handLandmarks = results.multiHandLandmarks[0];
-        drawHandLandmarks(gameState.handLandmarks);
-
-        gameState.prevFingerTip = { ...gameState.fingerTip };
-        const indexTip = gameState.handLandmarks[8];
-        gameState.fingerTip = { x: 1 - indexTip.x, y: indexTip.y };
-
-        if (gameState.isGameActive) {
-            const speed = calculateHandSpeed();
-            if (speed > 0.02) {
-                createBladeTrail(
-                    gameState.fingerTip.x * handCanvas.width,
-                    gameState.fingerTip.y * handCanvas.height,
-                    gameState.prevFingerTip.x * handCanvas.width,
-                    gameState.prevFingerTip.y * handCanvas.height
-                );
-            }
-        }
+        gameState.isHandVisible = true;
+        const indexTip = results.multiHandLandmarks[0][8];
+        
+        gameState.prevFingerTip.copy(gameState.fingerTip);
+        // Map normalized coordinates (0 to 1) to Screen Space (-1 to 1)
+        gameState.fingerTip.x = (1 - indexTip.x) * 2 - 1;
+        gameState.fingerTip.y = -(indexTip.y * 2 - 1);
     } else {
-        gameState.handLandmarks = null;
+        gameState.isHandVisible = false;
     }
-}
+});
 
-function drawHandLandmarks(landmarks) {
-    handCtx.fillStyle = 'rgba(57, 255, 20, 0.8)';
-    for (const landmark of landmarks) {
-        const x = (1 - landmark.x) * handCanvas.width;
-        const y = landmark.y * handCanvas.height;
-        handCtx.beginPath();
-        handCtx.arc(x, y, 4, 0, 2 * Math.PI);
-        handCtx.fill();
-    }
-}
+const mpCamera = new Camera(videoElement, {
+    onFrame: async () => { await hands.send({ image: videoElement }); },
+    width: 640,
+    height: 480
+});
+mpCamera.start();
 
-function createBladeTrail(x1, y1, x2, y2) {
-    const dx = x2 - x1;
-    const dy = y2 - y1;
-    const length = Math.sqrt(dx * dx + dy * dy);
-    const angle = Math.atan2(dy, dx);
+// Slicing Logic via Raycasting
+function checkSlicing() {
+    if (!gameState.isHandVisible || !gameState.isGameActive) return;
 
-    const trail = document.createElement('div');
-    trail.className = 'blade-trail';
-    trail.style.width = `${length}px`;
-    trail.style.left = `${x1}px`; 
-    trail.style.top = `${y1}px`;
-    trail.style.transform = `rotate(${angle}rad)`;
-    trail.style.backgroundColor = '#fff';
-    trail.style.boxShadow = `0 0 10px #39ff14`;
+    // Check speed of hand movement
+    const movement = gameState.fingerTip.distanceTo(gameState.prevFingerTip);
+    if (movement < 0.02) return;
 
-    document.getElementById('game-container').appendChild(trail);
-    gameState.bladeTrails.push({ element: trail, timestamp: Date.now() });
-}
+    // Cast ray from camera through finger position
+    raycaster.setFromCamera(gameState.fingerTip, camera);
+    const intersects = raycaster.intersectObjects(gameState.fruits.map(f => f.mesh));
 
-function updateBladeTrails() {
-    const now = Date.now();
-    gameState.bladeTrails = gameState.bladeTrails.filter(trail => {
-        const age = now - trail.timestamp;
-        if (age > 300) {
-            trail.element.remove();
-            return false;
+    intersects.forEach(hit => {
+        const fruitObj = gameState.fruits.find(f => f.mesh === hit.object);
+        if (fruitObj && !fruitObj.sliced) {
+            sliceFruit(fruitObj);
         }
-        trail.element.style.opacity = 1 - (age / 300);
-        return true;
     });
 }
 
-function spawnFruit() {
-    const idx = Math.floor(Math.random() * fruitGeometries.length);
-    const mesh = new THREE.Mesh(fruitGeometries[idx], fruitMaterials[idx].clone());
+function sliceFruit(fruit) {
+    fruit.sliced = true;
+    gameState.score++;
+    scoreElement.textContent = gameState.score;
     
-    const range = isMobileDevice() ? gameState.mobileSpawnRange : gameState.desktopSpawnRange;
-    mesh.position.set((Math.random() * range) - (range / 2), -12, 0);
-
-    const fruitObj = {
-        mesh: mesh,
-        velocity: { x: (Math.random() - 0.5) * 10, y: 18 + Math.random() * 5 },
-        rotation: { x: Math.random() * 0.1, y: Math.random() * 0.1 },
-        sliced: false
-    };
-
-    gameState.fruits.push(fruitObj);
-    scene.add(mesh);
-}
-
-function updateObjects(dt) {
-    gameState.fruits = gameState.fruits.filter(fruit => {
-        fruit.velocity.y -= 25 * dt; // Gravity
-        fruit.mesh.position.x += fruit.velocity.x * dt;
-        fruit.mesh.position.y += fruit.velocity.y * dt;
-        fruit.mesh.rotation.x += fruit.rotation.x;
-        fruit.mesh.rotation.y += fruit.rotation.y;
-
-        if (fruit.mesh.position.y < -15) {
-            if (!fruit.sliced) {
-                gameState.lives--;
-                livesElement.textContent = gameState.lives;
-                if (gameState.lives <= 0) endGame();
-            }
-            scene.remove(fruit.mesh);
-            return false;
-        }
-        return true;
-    });
-}
-
-function checkCollisions() {
-    if (!gameState.handLandmarks) return;
-    
-    // Map hand coordinates (0 to 1) to Three.js world coordinates
-    const fingerX = (gameState.fingerTip.x * 40) - 20;
-    const fingerY = (0.5 - gameState.fingerTip.y) * 30;
-
-    gameState.fruits.forEach(fruit => {
-        if (!fruit.sliced) {
-            const dist = fruit.mesh.position.distanceTo(new THREE.Vector3(fingerX, fingerY, 0));
-            if (dist < 3.5 && calculateHandSpeed() > 0.03) {
-                fruit.sliced = true;
-                gameState.score++;
-                scoreElement.textContent = gameState.score;
-                createExplosion(fruit.mesh.position, fruit.mesh.material.color);
-                scene.remove(fruit.mesh);
-            }
-        }
-    });
+    createExplosion(fruit.mesh.position, fruit.mesh.material.color);
+    scene.remove(fruit.mesh);
 }
 
 function createExplosion(pos, color) {
     for (let i = 0; i < 8; i++) {
-        const p = new THREE.Mesh(new THREE.SphereGeometry(0.4), new THREE.MeshBasicMaterial({ color }));
+        const p = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.3, 0.3), new THREE.MeshLambertMaterial({ color }));
         p.position.copy(pos);
-        const part = {
-            mesh: p,
-            vel: new THREE.Vector3((Math.random()-0.5)*20, (Math.random()-0.5)*20, (Math.random()-0.5)*10),
-            life: 1.0
-        };
+        const vel = new THREE.Vector3((Math.random()-0.5)*10, (Math.random()-0.5)*10, (Math.random()-0.5)*10);
+        gameState.particles.push({ mesh: p, velocity: vel, life: 1.0 });
         scene.add(p);
-        gameState.particles.push(part);
     }
 }
 
-function updateParticles(dt) {
-    gameState.particles = gameState.particles.filter(p => {
-        p.life -= dt * 2;
-        p.mesh.position.add(p.vel.clone().multiplyScalar(dt));
-        p.mesh.scale.setScalar(p.life);
+function spawnFruit() {
+    const mesh = new THREE.Mesh(
+        fruitGeometries[Math.floor(Math.random() * fruitGeometries.length)],
+        fruitMaterials[Math.floor(Math.random() * fruitMaterials.length)]
+    );
+    
+    mesh.position.set((Math.random() - 0.5) * 20, -10, 0);
+    const velocity = new THREE.Vector3((Math.random() - 0.5) * 5, 15 + Math.random() * 5, 0);
+    
+    gameState.fruits.push({ mesh, velocity, sliced: false });
+    scene.add(mesh);
+}
+
+function update(dt) {
+    // Update Fruits
+    for (let i = gameState.fruits.length - 1; i >= 0; i--) {
+        const f = gameState.fruits[i];
+        f.velocity.y -= 20 * dt; // Gravity
+        f.mesh.position.addScaledVector(f.velocity, dt);
+        f.mesh.rotation.x += 0.02;
+
+        if (f.mesh.position.y < -12) {
+            if (!f.sliced) {
+                gameState.lives--;
+                livesElement.textContent = gameState.lives;
+                if (gameState.lives <= 0) endGame();
+            }
+            scene.remove(f.mesh);
+            gameState.fruits.splice(i, 1);
+        }
+    }
+
+    // Update Particles
+    for (let i = gameState.particles.length - 1; i >= 0; i--) {
+        const p = gameState.particles[i];
+        p.life -= dt;
+        p.mesh.position.addScaledVector(p.velocity, dt);
+        p.mesh.material.opacity = p.life;
         if (p.life <= 0) {
             scene.remove(p.mesh);
-            return false;
+            gameState.particles.splice(i, 1);
         }
-        return true;
-    });
+    }
 }
 
-function calculateHandSpeed() {
-    return Math.hypot(gameState.fingerTip.x - gameState.prevFingerTip.x, gameState.fingerTip.y - gameState.prevFingerTip.y);
-}
-
-function gameLoop(timestamp) {
+function gameLoop(time) {
     if (!gameState.isGameActive) return;
-    const dt = Math.min((timestamp - gameState.lastFrameTime) / 1000, 0.1);
-    gameState.lastFrameTime = timestamp;
+    const dt = 0.016; // Approx 60fps
 
-    if (timestamp - gameState.lastSpawnTime > gameState.spawnInterval) {
+    if (time - gameState.lastSpawnTime > gameState.spawnInterval) {
         spawnFruit();
-        gameState.lastSpawnTime = timestamp;
-        gameState.spawnInterval = Math.max(600, gameState.spawnInterval * 0.98);
+        gameState.lastSpawnTime = time;
+        gameState.spawnInterval = Math.max(600, gameState.spawnInterval * 0.99);
     }
 
-    updateObjects(dt);
-    updateParticles(dt);
-    checkCollisions();
-    updateBladeTrails();
+    checkSlicing();
+    update(dt);
     renderer.render(scene, camera);
     requestAnimationFrame(gameLoop);
 }
@@ -285,15 +192,11 @@ function gameLoop(timestamp) {
 function startGame() {
     gameState.score = 0;
     gameState.lives = 5;
-    gameState.isGameActive = true;
-    gameState.spawnInterval = 1500;
     gameState.fruits.forEach(f => scene.remove(f.mesh));
     gameState.fruits = [];
-    scoreElement.textContent = "0";
-    livesElement.textContent = "5";
+    gameState.isGameActive = true;
     startScreen.style.display = 'none';
     gameOverScreen.style.display = 'none';
-    gameState.lastFrameTime = performance.now();
     requestAnimationFrame(gameLoop);
 }
 
@@ -303,15 +206,11 @@ function endGame() {
     finalScoreElement.textContent = gameState.score;
 }
 
-// Listeners
-startButton.addEventListener('click', startGame);
-restartButton.addEventListener('click', startGame);
-window.addEventListener('resize', () => {
-    renderer.setSize(window.innerWidth * 0.5, window.innerHeight);
-    camera.aspect = (window.innerWidth * 0.5) / window.innerHeight;
-    camera.updateProjectionMatrix();
-});
+document.getElementById('start-button').onclick = startGame;
+document.getElementById('restart-button').onclick = startGame;
 
-// Init
-setupHandTracking();
-        
+window.onresize = () => {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+};
