@@ -1,4 +1,4 @@
-// --- Game State & Configuration ---
+// --- Responsive Game State ---
 const gameState = {
     score: 0,
     lives: 5,
@@ -8,11 +8,11 @@ const gameState = {
     lastSpawnTime: 0,
     spawnInterval: 1500,
     fingerTip: new THREE.Vector2(),
-    prevFingerTip: new THREE.Vector2(),
-    isHandVisible: false
+    isHandVisible: false,
+    // Screen boundaries in 3D units
+    viewBounds: { x: 0, y: 0 }
 };
 
-// --- DOM Elements ---
 const videoElement = document.getElementById('video');
 const gameCanvas = document.getElementById('game-canvas');
 const scoreElement = document.getElementById('score');
@@ -22,11 +22,10 @@ const gameOverScreen = document.getElementById('game-over');
 const finalScoreElement = document.getElementById('final-score');
 const loadingScreen = document.getElementById('loading');
 
-// --- Three.js Core Setup ---
+// --- Three.js Setup ---
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
 const renderer = new THREE.WebGLRenderer({ canvas: gameCanvas, alpha: true, antialias: true });
-renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 
 // --- Lighting ---
@@ -37,27 +36,30 @@ scene.add(dirLight);
 
 camera.position.z = 15;
 
-// --- Visual Pointer (The Tracker) ---
+// --- Visual Pointer ---
 const pointerGeo = new THREE.SphereGeometry(0.4, 16, 16);
 const pointerMat = new THREE.MeshBasicMaterial({ color: 0x00ffff, transparent: true, opacity: 0.8 });
 const handPointer = new THREE.Mesh(pointerGeo, pointerMat);
-handPointer.visible = false; // Hide until hand is detected
+handPointer.visible = false;
 scene.add(handPointer);
 
-// --- Fruit Assets ---
-const fruitGeometries = [
-    new THREE.SphereGeometry(1.2, 16, 16),
-    new THREE.IcosahedronGeometry(1.2, 1),
-    new THREE.TorusGeometry(0.8, 0.4, 12, 24)
-];
-const fruitMaterials = [
-    new THREE.MeshLambertMaterial({ color: 0xff0000 }), // Red
-    new THREE.MeshLambertMaterial({ color: 0x00ff00 }), // Green
-    new THREE.MeshLambertMaterial({ color: 0xffa500 }), // Orange
-    new THREE.MeshLambertMaterial({ color: 0xffff00 })  // Yellow
-];
+// --- Calculation for Responsive Boundaries ---
+function updateViewBounds() {
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
 
-// --- MediaPipe Hands Setup ---
+    // Calculate visible width/height at Z=0
+    const vFOV = THREE.MathUtils.degToRad(camera.fov);
+    const height = 2 * Math.tan(vFOV / 2) * camera.position.z;
+    const width = height * camera.aspect;
+    
+    gameState.viewBounds.x = width / 2;
+    gameState.viewBounds.y = height / 2;
+}
+updateViewBounds();
+
+// --- Hand Tracking ---
 const hands = new Hands({
     locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
 });
@@ -76,15 +78,12 @@ hands.onResults(results => {
         gameState.isHandVisible = true;
         const indexTip = results.multiHandLandmarks[0][8];
         
-        gameState.prevFingerTip.copy(gameState.fingerTip);
-        
-        // Map hand coordinates to screen space
+        // Map normalized MP coordinates to the calculated 3D view bounds
         gameState.fingerTip.x = (1 - indexTip.x) * 2 - 1;
         gameState.fingerTip.y = -(indexTip.y * 2 - 1);
 
-        // Update 3D Pointer Position
-        handPointer.position.x = gameState.fingerTip.x * 14; 
-        handPointer.position.y = gameState.fingerTip.y * 10;
+        handPointer.position.x = gameState.fingerTip.x * gameState.viewBounds.x;
+        handPointer.position.y = gameState.fingerTip.y * gameState.viewBounds.y;
         handPointer.position.z = 0;
         handPointer.visible = true;
     } else {
@@ -95,84 +94,39 @@ hands.onResults(results => {
 
 const mpCamera = new Camera(videoElement, {
     onFrame: async () => { await hands.send({ image: videoElement }); },
-    width: 640,
-    height: 480
+    width: 640, height: 480
 });
 mpCamera.start();
 
-// --- Slicing Logic ---
-function checkSlicing() {
-    if (!gameState.isHandVisible || !gameState.isGameActive) return;
-
-    const bladePos = handPointer.position;
-
-    gameState.fruits.forEach(fruit => {
-        if (!fruit.sliced) {
-            // Distance check between pointer and fruit mesh
-            const dist = bladePos.distanceTo(fruit.mesh.position);
-
-            // Hitbox size 1.8 (generous for easy cutting)
-            if (dist < 1.8) { 
-                sliceFruit(fruit);
-            }
-        }
-    });
-}
-
-function sliceFruit(fruit) {
-    fruit.sliced = true;
-    gameState.score++;
-    scoreElement.textContent = gameState.score;
-    
-    createExplosion(fruit.mesh.position, fruit.mesh.material.color);
-    scene.remove(fruit.mesh);
-}
-
-function createExplosion(pos, color) {
-    for (let i = 0; i < 10; i++) {
-        const p = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.4, 0.4), new THREE.MeshLambertMaterial({ color }));
-        p.position.copy(pos);
-        const vel = new THREE.Vector3((Math.random()-0.5)*12, (Math.random()-0.5)*12, (Math.random()-0.5)*12);
-        gameState.particles.push({ mesh: p, velocity: vel, life: 1.0 });
-        scene.add(p);
-    }
-}
-
-// --- Spawn & Physics ---
+// --- Responsive Slicing & Physics ---
 function spawnFruit() {
-    const mesh = new THREE.Mesh(
-        fruitGeometries[Math.floor(Math.random() * fruitGeometries.length)],
-        fruitMaterials[Math.floor(Math.random() * fruitMaterials.length)]
-    );
+    const geo = new THREE.SphereGeometry(1, 16, 16);
+    const mat = new THREE.MeshLambertMaterial({ color: Math.random() * 0xffffff });
+    const mesh = new THREE.Mesh(geo, mat);
     
-    // Spawn at bottom with random horizontal spread
-    mesh.position.set((Math.random() - 0.5) * 22, -12, 0);
+    // Spawn randomly along the bottom edge
+    const spawnX = (Math.random() - 0.5) * (gameState.viewBounds.x * 1.5);
+    mesh.position.set(spawnX, -gameState.viewBounds.y - 2, 0);
     
-    // Higher Jump Velocity
-    const velocity = new THREE.Vector3(
-        (Math.random() - 0.5) * 6, 
-        25 + Math.random() * 6, 
-        0
-    );
+    // SMART VELOCITY: If spawned on left, push right. If spawned on right, push left.
+    const horizontalPush = spawnX > 0 ? -Math.random() * 5 : Math.random() * 5;
+    const verticalPush = 18 + Math.random() * 5; // Balanced height
+    
+    const velocity = new THREE.Vector3(horizontalPush, verticalPush, 0);
     
     gameState.fruits.push({ mesh, velocity, sliced: false });
     scene.add(mesh);
 }
 
 function update(dt) {
-    // Update Fruits
     for (let i = gameState.fruits.length - 1; i >= 0; i--) {
         const f = gameState.fruits[i];
-        
-        // Reduced Gravity for longer air time
-        f.velocity.y -= 13 * dt; 
-        
+        f.velocity.y -= 15 * dt; // Consistent gravity
         f.mesh.position.addScaledVector(f.velocity, dt);
-        f.mesh.rotation.x += 0.03;
-        f.mesh.rotation.z += 0.03;
+        f.mesh.rotation.x += 0.05;
 
-        // Missed fruit cleanup
-        if (f.mesh.position.y < -15) {
+        // Dynamic cleanup based on screen height
+        if (f.mesh.position.y < -gameState.viewBounds.y - 5) {
             if (!f.sliced) {
                 gameState.lives--;
                 livesElement.textContent = gameState.lives;
@@ -182,32 +136,32 @@ function update(dt) {
             gameState.fruits.splice(i, 1);
         }
     }
-
-    // Update Particles
-    for (let i = gameState.particles.length - 1; i >= 0; i--) {
-        const p = gameState.particles[i];
-        p.life -= dt;
-        p.mesh.position.addScaledVector(p.velocity, dt);
-        p.mesh.material.transparent = true;
-        p.mesh.material.opacity = p.life;
-        if (p.life <= 0) {
-            scene.remove(p.mesh);
-            gameState.particles.splice(i, 1);
-        }
-    }
 }
 
-// --- Core Game Loop ---
+function checkSlicing() {
+    if (!gameState.isHandVisible || !gameState.isGameActive) return;
+    const bladePos = handPointer.position;
+
+    gameState.fruits.forEach(fruit => {
+        if (!fruit.sliced) {
+            if (bladePos.distanceTo(fruit.mesh.position) < 1.8) {
+                fruit.sliced = true;
+                gameState.score++;
+                scoreElement.textContent = gameState.score;
+                scene.remove(fruit.mesh);
+            }
+        }
+    });
+}
+
 function gameLoop(time) {
     if (!gameState.isGameActive) return;
-    
-    const dt = 0.016; 
+    const dt = 0.016;
 
     if (time - gameState.lastSpawnTime > gameState.spawnInterval) {
         spawnFruit();
         gameState.lastSpawnTime = time;
-        // Increase difficulty over time
-        gameState.spawnInterval = Math.max(500, gameState.spawnInterval * 0.98);
+        gameState.spawnInterval = Math.max(600, gameState.spawnInterval * 0.99);
     }
 
     checkSlicing();
@@ -216,20 +170,12 @@ function gameLoop(time) {
     requestAnimationFrame(gameLoop);
 }
 
-// --- Start / Stop ---
 function startGame() {
     gameState.score = 0;
     gameState.lives = 5;
-    gameState.spawnInterval = 1500;
     gameState.fruits.forEach(f => scene.remove(f.mesh));
-    gameState.particles.forEach(p => scene.remove(p.mesh));
     gameState.fruits = [];
-    gameState.particles = [];
-    
     gameState.isGameActive = true;
-    scoreElement.textContent = "0";
-    livesElement.textContent = "5";
-    
     startScreen.style.display = 'none';
     gameOverScreen.style.display = 'none';
     requestAnimationFrame(gameLoop);
@@ -241,12 +187,7 @@ function endGame() {
     finalScoreElement.textContent = gameState.score;
 }
 
-// --- Event Listeners ---
 document.getElementById('start-button').onclick = startGame;
 document.getElementById('restart-button').onclick = startGame;
-
-window.onresize = () => {
-    camera.aspect = window.innerWidth / window.innerHeight;
-    camera.updateProjectionMatrix();
-    renderer.setSize(window.innerWidth, window.innerHeight);
-};
+window.onresize = updateViewBounds;
+            
